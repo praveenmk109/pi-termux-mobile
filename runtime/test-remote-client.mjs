@@ -1,9 +1,14 @@
 // test-remote-client.mjs — exercises pi-serverd end-to-end over the unix socket.
 // Usage: node test-remote-client.mjs [socketPath] [serverId]
+// This creates a real session and submits a real model prompt. Never run as an offline unit test.
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { Client } from '@earendil-works/pi-client';
 import { createUnixTransportFactory } from '@earendil-works/pi-client/unix';
+
+if (process.env.PI_MOBILE_LIVE_TEST !== '1') {
+  throw new Error('Live test refused: creates a session and can incur model costs; set PI_MOBILE_LIVE_TEST=1 only with explicit approval');
+}
 
 const home = process.env.HOME;
 const sock = process.argv[2] || `${home}/.pi-serverd/server.sock`;

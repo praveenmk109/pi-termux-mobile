@@ -17,11 +17,11 @@ import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
 import { createUnixServer } from '@earendil-works/pi-server/unix';
 import { SessionNotFoundError } from '@earendil-works/pi-server';
-import { SpaceService, StaticIdentity, withSpaceService, startConfiguredFederation } from './pi-spaces.mjs';
+import { SpaceService, StaticIdentity, withSpaceService, startConfiguredFederation } from './phi-spaces.mjs';
 import {
   acquireOwnerLock, createCredentialStore, createEventHub, createModelCatalog,
   ensureModel, isBusy, openHarness, pickModel, readJson, requestIdOf, sessionStore, Subagent,
-  whenBusyOf, writeFileAtomic, Spaces, startSpaceService,
+  whenBusyOf, writeFileAtomic, createSpaces, localSpaces, openSqliteHost, startSpaceService, withEventSink,
 } from './common.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +34,9 @@ const SOCK_PATH = process.env.PI_SERVERD_SOCK || `${STATE_DIR}/server.sock`;
 const WORKDIR = process.env.PI_WORKDIR || HOME;
 const LEGACY_MANIFEST = `${STATE_DIR}/sessions.json`;
 const DB = `${STATE_DIR}/harness.sqlite`;
+// The space's own store: not the sessions' harness, so the space outlives a harness restart and the other way round.
+// A space kept in harness.sqlite by an older version is not carried over (phi-spaces decision D6).
+const SPACE_DB = `${STATE_DIR}/space.sqlite`;
 
 // private state dir: pi-server does not authenticate unix-socket peers
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
@@ -57,6 +60,8 @@ const ctx = BACKGROUND_CONTEXT;
 const credentials = createCredentialStore(process.env.PI_SERVERD_AUTH_FILE || `${HOME}/.pi/agent/auth.json`);
 const models = await createModelCatalog(credentials);
 const env = new NodeExecutionEnv({ cwd: WORKDIR, env: process.env });
+const space = await openSqliteHost(SPACE_DB);
+const Spaces = createSpaces(localSpaces(space));
 const harness = await openHarness({
   dbPath: DB,
   models,
@@ -76,10 +81,11 @@ const sessions = sessionStore(harness, ctx);
   }
 }
 const federation = process.env.PI_SERVERD_FEDERATION_CONFIG
-  ? await startConfiguredFederation(harness, ctx, process.env.PI_SERVERD_FEDERATION_CONFIG) : null;
+  ? await startConfiguredFederation(withEventSink(space, harness), ctx, process.env.PI_SERVERD_FEDERATION_CONFIG) : null;
 if (existsSync(`${STATE_DIR}/restart.lock`)) throw new Error("restart lock was installed during boot");
 harness.resume();
-const stopSpaces = federation ? () => federation.close() : await startSpaceService(harness, ctx); // reaper + event delivery for the shared space
+// reaper + delivery of the space's events into the sessions
+const stopSpaces = federation ? () => federation.close() : await startSpaceService(withEventSink(space, harness), ctx);
 
 const events = createEventHub(harness, ctx);
 
@@ -245,7 +251,7 @@ const host = {
 
 // The private socket has one administrator-configured space identity. SSH access alone grants no space role.
 const spaceIdentity = new StaticIdentity(spacePeer ? { [spacePeer]: { principal: { peerId: spacePeer }, roles: spaceRoles } } : {});
-const spaceService = new SpaceService({ host: harness, ctx, identity: spaceIdentity, hostId: serverId, authorityId: serverId });
+const spaceService = new SpaceService({ host: space, ctx, identity: spaceIdentity, hostId: serverId, authorityId: serverId });
 host.serverServices = withSpaceService(host.serverServices, federation?.service || spaceService, federation?.trustedConnection || (() => ({ peerId: spacePeer || '' })));
 
 const server = createUnixServer(host, { serverId, path: SOCK_PATH, mode: 0o600 });
@@ -261,6 +267,7 @@ async function shutdown(signal) {
   try { await events.close(); } catch {}
   try { await stopSpaces(); } catch {}
   try { await harness.close(ctx); } catch (e) { console.error('harness.close:', e?.message || e); }
+  try { await space.close(ctx); } catch (e) { console.error('space.close:', e?.message || e); }
   releaseLock();
   process.exit(0);
 }

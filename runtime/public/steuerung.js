@@ -1,4 +1,4 @@
-// Runs, workers and operations through admin commands (docs/betrieb-und-mobile-steuerung.md §7.2 in pi-spaces).
+// Runs, workers and operations through admin commands (docs/betrieb-und-mobile-steuerung.md §7.2 in phi-spaces).
 // Every action keeps its command ID; polling runs only while the page is visible; data is rendered as text only.
 import { renderMenu } from './menu.js';
 const token = renderMenu(), message = document.getElementById('ctl-message');

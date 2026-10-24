@@ -232,8 +232,9 @@ export const SessionRegistry = defineDoc({
   initial: () => ({ sessions: {}, activeId: null }),
 });
 
-// pi-spaces shared space; refreshed automatically by pi-spaces bundle and the Android pre-build task.
-export { spaces as Spaces, startService as startSpaceService } from './pi-spaces.mjs';
+// phi-spaces shared space; refreshed automatically by phi-spaces bundle and the Android pre-build task.
+// The space has its own store (space.sqlite): it outlives the agent sessions' harness; the agents' space tools act on it.
+export { createSpaces, localSpaces, openSqliteHost, startService as startSpaceService, withEventSink } from './phi-spaces.mjs';
 
 export async function openHarness({ dbPath, models, env, extensions = [] }, ctx) {
   const registry = createRegistry();

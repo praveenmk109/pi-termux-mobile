@@ -22,6 +22,22 @@ and per-conversation execution environments — including remote hosts.
 
 ## Space RPC through pi-serverd
 
+### phi-spaces namespace upgrade
+
+The runtime bundle, imports, Android signer domains, socket environment variable and build inputs now
+use `phi-spaces` / `PHI_SPACES_*`. The source checkout defaults to the sibling `phi-spaces` directory.
+Existing durable stores need a verified offline migration; use the copy-only SQLite migration tool in
+that checkout rather than replacing bytes in a database. Original stores must remain available for rollback.
+
+Existing Android profiles/Keystore aliases are not silently rewritten or deleted. Their previous aliases
+and bindings are not accepted as newly issued `phi-spaces` identities; arrange controlled re-enrollment
+with the updated host before relying on the upgraded app. An APK build is not device acceptance.
+
+`runtime/test-remote-client.mjs` is a **live** test that creates a session and submits a potentially paid model
+prompt. It now refuses execution unless `PI_MOBILE_LIVE_TEST=1` is explicitly set after cost approval.
+It is not part of the offline runtime test suite. Use `npm test` in `runtime/` and
+`node --test test/spaces-mobile.test.mjs` at the repository root for isolated checks.
+
 `pi-serverd.mjs` connects the space service to socket requests with
 `withSpaceService`; the existing `sessions` service remains available.
 For a standalone daemon, explicitly provision its private socket identity:
@@ -203,7 +219,7 @@ after 10 s) and removes the `pi-serverd` tmux session. It answers
 `{ok, stopped}`; `stopped:false` means no daemon was running.
 
 **Version check.** The installed state is a SHA-256 (16 hex chars) over
-`pi-serverd.mjs`, `common.mjs`, `pi-spaces.mjs`, `package.json`, `package-lock.json`
+`pi-serverd.mjs`, `common.mjs`, `phi-spaces.mjs`, `package.json`, `package-lock.json`
 and the optional generated `space-examples/` directory, stored in
 `~/.pi-mobile-remote/runtime/.version` (`.deps` holds the dependency hash). Any
 difference to the files on the phone means *outdated*; declining the update keeps
@@ -278,20 +294,20 @@ Disconnect cancels pending connection and recovery operations.
 
 ## Repackaging assets
 
-Every Android build runs `scripts/prepare-runtime.py` before `preBuild`. It rebuilds pi-spaces from the
-sibling checkout, synchronizes `runtime/pi-spaces.mjs` and compiled `runtime/space-examples/*.mjs`, then
+Every Android build runs `scripts/prepare-runtime.py` before `preBuild`. It rebuilds phi-spaces from the
+sibling checkout, synchronizes `runtime/phi-spaces.mjs` and compiled `runtime/space-examples/*.mjs`, then
 packages `runtime.bin` and generates `payload.sha256` for the runtime/rootfs pair. Changed payloads are
 re-extracted on the device without a manual version bump. Unchanged files keep their timestamps.
 
 Build prerequisites: Python 3, installed mobile runtime dependencies and the prepared rootfs asset.
-Refreshing from source additionally needs Node/npm and the pi-spaces development dependencies.
-Set `PI_SPACES_SOURCE` for a source checkout elsewhere. If the source is missing or incompatible, the
-Android build warns and uses the existing mobile bundles. The checked-in `pi-spaces.mjs` is required;
+Refreshing from source additionally needs Node/npm and the phi-spaces development dependencies.
+Set `PHI_SPACES_SOURCE` for a source checkout elsewhere. If the source is missing or incompatible, the
+Android build warns and uses the existing mobile bundles. The checked-in `phi-spaces.mjs` is required;
 generated `space-examples/` CLI programs are optional, so a fresh checkout can run tests and provision
 a remote host without the sibling source tree. Available examples are still packaged, hashed and
 uploaded. Errors while building an available source checkout are reported as build failures.
-Running `npm run bundle` in pi-spaces also synchronizes this checkout automatically; an alternate mobile
-checkout can be selected with `PI_SPACES_MOBILE_ROOT`. Generated example modules are CLI programs,
+Running `npm run bundle` in phi-spaces also synchronizes this checkout automatically; an alternate mobile
+checkout can be selected with `PHI_SPACES_MOBILE_ROOT`. Generated example modules are CLI programs,
 not additional mobile buttons or Federation services. Remote provisioning includes them in its release hash
 and transfers them along with the library; existing update confirmation rules still apply.
 
@@ -572,7 +588,7 @@ Keystore/phone-to-server acceptance remain pending.
 runtime, independent boot/authority checks and its supervisor. Configuration,
 keys and register endpoints must be provisioned explicitly. A persistent
 `restart.lock` blocks normal server startup. Operational requirements and open
-recovery integration are documented in the sibling pi-spaces
+recovery integration are documented in the sibling phi-spaces
 `docs/ap1b-betrieb.md` and `docs/ap1b-abnahme.md`.
 
 Mobile lifecycle checks: `node --test test/spaces-mobile.test.mjs`.

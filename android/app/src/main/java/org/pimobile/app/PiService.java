@@ -124,7 +124,7 @@ public final class PiService extends Service {
         // Termux-built openssl hardcodes /data/data/com.termux paths — point at ours.
         env.put("OPENSSL_CONF", new File(prefix, "etc/tls/openssl.cnf").getAbsolutePath());
         env.put("SSL_CERT_FILE", new File(prefix, "etc/tls/cert.pem").getAbsolutePath());
-        env.put("PI_SPACES_KEY_SOCKET", SpaceKeyStore.socketName());
+        env.put("PHI_SPACES_KEY_SOCKET", SpaceKeyStore.socketName());
 
         // a stale port file would make the UI load a dead bridge address
         new File(new File(home, ".pi-mobile"), "port").delete();

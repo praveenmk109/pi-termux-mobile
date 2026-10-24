@@ -2,7 +2,7 @@
 import { readFileSync, mkdirSync, renameSync, writeFileSync, chmodSync, lstatSync, openSync, fsyncSync, closeSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { RemoteSpace, socketTransport } from './pi-spaces.mjs';
+import { RemoteSpace, socketTransport } from './phi-spaces.mjs';
 import { androidSigner, createAndroidSigner, keyStoreCall } from './space-keystore.mjs';
 // Admin commands the phone may send into the control Space. The coordinator's supervisor checks the admin key;
 // this list only keeps the phone from sending kinds it has no view for.
@@ -29,7 +29,7 @@ export class MobileSpaces {
   async call(method, body = {}) {
     return this.serial(async () => {
       let profile = this.read();
-      if (method === 'status') return { profile, keystore: !!process.env.PI_SPACES_KEY_SOCKET };
+      if (method === 'status') return { profile, keystore: !!process.env.PHI_SPACES_KEY_SOCKET };
       if (method === 'prepare') {
         if (profile) throw new Error('an identity is already prepared; resolve its pending operation first');
         if (![body.peerId, body.controlHostId].every(v => typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(v))) throw new Error('peer and control host identity are required');

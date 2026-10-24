@@ -1,6 +1,6 @@
 // Android signer: only public key metadata and DER signatures cross the UID-checked local socket.
 import net from 'node:net';
-export function keyStoreCall(request, socketName = process.env.PI_SPACES_KEY_SOCKET) {
+export function keyStoreCall(request, socketName = process.env.PHI_SPACES_KEY_SOCKET) {
   if (!socketName) return Promise.reject(new Error('Android Keystore service is unavailable'));
   return new Promise((resolve, reject) => {
     const socket = net.createConnection({ path: '\0' + socketName }); let result = '', settled = false;

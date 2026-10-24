@@ -4,6 +4,16 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MobileSpaces } from '../runtime/spaces-mobile.mjs';
+import { spawnSync } from 'node:child_process';
+
+test('the live remote-client script refuses execution before reading credentials or opening sockets', () => {
+  const result = spawnSync(process.execPath, [new URL('../runtime/test-remote-client.mjs', import.meta.url).pathname], {
+    env: {...process.env, PI_MOBILE_LIVE_TEST:'0', HOME:'/nonexistent-live-test-home'}, encoding:'utf8', timeout:5000,
+  });
+  assert.equal(result.status,1);
+  assert.match(result.stderr,/Live test refused/);
+  assert.doesNotMatch(result.stderr,/server-id.*ENOENT/);
+});
 
 test('mobile pairing persists its identity before the effect and resolves a lost response after reopen', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mobile-pair-')), file = join(dir, 'profile.json'); let created = 0;
@@ -37,7 +47,7 @@ test('a pending rotation is retained across reopen and activates the new alias o
 });
 
 test('data access obtains an app-bound grant from a separately authenticated control connection', async () => {
-  const { serveSpace } = await import('../runtime/pi-spaces.mjs');
+  const { serveSpace } = await import('../runtime/phi-spaces.mjs');
   const key = { alias: 'native', keyId: 'phone-key', algorithm: 'ecdsa-p256', publicKey: 'public', sign: async () => Buffer.from('fixture-signature') };
   const servers = [], calls = [];
   const start = async hostId => {

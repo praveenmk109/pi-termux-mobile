@@ -22,10 +22,10 @@ final class SpaceKeyStore implements AutoCloseable {
     private final KeyStore store;
     private volatile boolean closed;
     private final android.content.SharedPreferences bindings;
-    static String socketName() { return "pi-spaces-key-" + Process.myUid(); }
+    static String socketName() { return "phi-spaces-key-" + Process.myUid(); }
     SpaceKeyStore(android.content.Context context) throws Exception {
         store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
-        bindings = context.getSharedPreferences("pi-spaces-key-bindings", android.content.Context.MODE_PRIVATE);
+        bindings = context.getSharedPreferences("phi-spaces-key-bindings", android.content.Context.MODE_PRIVATE);
         server = new LocalServerSocket(socketName());
         Thread thread = new Thread(this::serve, "space-keystore"); thread.setDaemon(true); thread.start();
     }
@@ -43,7 +43,7 @@ final class SpaceKeyStore implements AutoCloseable {
         } catch (Exception ignored) { /* shutdown, or an invalid local caller */ }
     }
     private static String checkedId(String id) throws Exception { if (!id.matches("[A-Za-z0-9_.:-]{1,128}")) throw new Exception("invalid identity"); return id; }
-    private String alias(JSONObject call) throws Exception { String alias = call.getString("alias"); if (!alias.matches("pi-spaces/[a-f0-9-]{36}")) throw new Exception("invalid key alias"); return alias; }
+    private String alias(JSONObject call) throws Exception { String alias = call.getString("alias"); if (!alias.matches("phi-spaces/[a-f0-9-]{36}")) throw new Exception("invalid key alias"); return alias; }
     private JSONObject publicInfo(String alias) throws Exception {
         if (!store.containsAlias(alias)) throw new Exception("unknown keystore key");
         byte[] pub = store.getCertificate(alias).getPublicKey().getEncoded();
@@ -55,7 +55,7 @@ final class SpaceKeyStore implements AutoCloseable {
         String method = call.getString("method");
         if ("create".equals(method)) {
             String peer = checkedId(call.getString("peerId")), host = checkedId(call.getString("gateHostId"));
-            String alias = "pi-spaces/" + UUID.randomUUID();
+            String alias = "phi-spaces/" + UUID.randomUUID();
             KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");
             generator.initialize(new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY).setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1")).setDigests(KeyProperties.DIGEST_SHA256).setUserAuthenticationRequired(false).build());
             generator.generateKeyPair();
@@ -76,8 +76,8 @@ final class SpaceKeyStore implements AutoCloseable {
         byte[] bytes = Base64.decode(call.getString("bytes"), Base64.DEFAULT);
         if (bytes.length > 8192) throw new Exception("signing request too large");
         String message = new String(bytes, StandardCharsets.UTF_8), domain;
-        if (message.startsWith("pi-spaces/auth/v1\n")) domain = "pi-spaces/auth/v1\n";
-        else if (message.startsWith("pi-spaces/rotate/v1\n")) domain = "pi-spaces/rotate/v1\n";
+        if (message.startsWith("phi-spaces/auth/v1\n")) domain = "phi-spaces/auth/v1\n";
+        else if (message.startsWith("phi-spaces/rotate/v1\n")) domain = "phi-spaces/rotate/v1\n";
         else throw new Exception("only space authentication and rotation can be signed");
         JSONObject proof = new JSONObject(message.substring(domain.length()));
         String peer = bindings.getString(alias + ":peer", ""), host = bindings.getString(alias + ":host", "");
