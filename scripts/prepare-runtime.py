@@ -15,7 +15,7 @@ RUNTIME = ROOT / 'runtime'
 ASSETS = ROOT / 'android/app/src/main/assets'
 FILES = ['server.mjs', 'common.mjs', 'remote-env.mjs', 'env-server.mjs', 'pi-serverd.mjs',
          'space-keystore.mjs', 'spaces-mobile.mjs', 'remote-client.mjs', 'remote-provision.mjs', 'remote-state.mjs', 'phi-spaces.mjs', 'package.json',
-         'package-lock.json', 'public', 'node_modules', 'space-examples']
+         'package-lock.json', 'public', 'node_modules']
 
 source_available = (SOURCE / 'scripts/bundle-mobile.mjs').is_file()
 if not source_available:
@@ -40,6 +40,8 @@ else:
     print('WARNING: optional space-examples missing; packaging the runtime without CLI examples', file=sys.stderr)
 
 def entries(path):
+    if not path.exists():
+        return
     if path.name == '.bin':
         return
     # Retain valid links, exclude broken links without deleting developer files.
