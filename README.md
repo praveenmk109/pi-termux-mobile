@@ -4,7 +4,7 @@
 > development. Remote sessions, the embedded Termux runtime, and Android
 > background-process handling may still change or fail on individual devices.
 >
-> **Version 0.0.5** — still quick & dirty, see the [changelog](#changelog).
+> **Version 0.0.6** — still quick & dirty, see the [changelog](#changelog).
 
 Minimal Android app that embeds Termux-built binaries (Node.js 26.4.0, bash,
 coreutils, git, ripgrep, fd, openssh, npm, util-linux `script`, …) plus a
@@ -454,6 +454,60 @@ Caveats on device:
 See ANALYSE.md for the full evaluation and upstream facts.
 
 ## Changelog
+
+### 0.0.6 — 2026-10-26
+
+phi-spaces on the host and the phone: spaces for remote agents, device pairing,
+mobile admin control, and a space store separate from pi-durable.
+
+**phi-spaces (formerly pi-spaces)**
+
+- `pi-serverd` starts the space service and exposes spaces to its agent
+  conversations. The phone stays a client and coordinator, with no space of
+  its own.
+- Space RPC over the pi-serverd socket (`withSpaceService`). It requires an
+  explicitly provisioned identity (`PI_SERVERD_SPACE_PRINCIPAL` +
+  `PI_SERVERD_SPACE_ROLES`) or a federation config
+  (`PI_SERVERD_FEDERATION_CONFIG`). Client fields never set the identity.
+- **Own store:** the space lives in `space.sqlite` (`node:sqlite`, WAL),
+  separate from `harness.sqlite`. Each side survives restarts of the other.
+- Tool calls carry a request identity, and a call repeated after a crash
+  returns its first result.
+- **Breaking:** a space kept in `harness.sqlite` by an earlier version is not
+  migrated (phi-spaces decision D6).
+- Renamed to phi-spaces: `runtime/phi-spaces.mjs`, `PHI_SPACES_SOURCE`,
+  `PHI_SPACES_MOBILE_ROOT`, signer domains. Existing Keystore aliases need
+  controlled re-enrollment.
+- `scripts/prepare-runtime.py` runs before every Android build. It rebuilds
+  the bundle and the compiled `space-examples/` from the sibling checkout,
+  packages `runtime.bin` and writes `payload.sha256`, so a changed payload is
+  re-extracted on the device without a version bump.
+- Remote provisioning ships the bundle and examples, and they count toward the
+  release hash.
+
+**New pages**
+
+- **Spaces** (`spaces.html`): P-256 device key in Android Keystore, token/QR
+  JSON pairing, key proof, own-key rotation, read-only object view of a data
+  space.
+- **Spaces-Steuerung** (`steuerung.html`): admin commands for runs (start,
+  pause, resume, stop after a preview, recovery decisions, schedules, result
+  export), workers, spaces, deployment plan/export, alerts and audit.
+  - Command IDs are stored before sending and reused after a timeout, double
+    tap or restart. Unsent commands are marked as unsent.
+- Device acceptance on a Xiaomi M2007J17G (2026-10-16, and 2026-10-24 on the own
+  store).
+
+**Remote**
+
+- Remote session lifecycle fixed (renaming, deleted-session attachments, prompt
+  deduplication).
+- Deployment rolls back to the preceding release when a swap or restart fails.
+- Deadlines: 15 s for metadata and connection attempts, 35 s for RPC calls.
+  Disconnect cancels pending connection and recovery operations.
+- Offline regression tests: `npm test` in `runtime/`.
+- `test-remote-client.mjs` (live, may cost tokens) runs only with
+  `PI_MOBILE_LIVE_TEST=1`.
 
 ### 0.0.5 — 2026-10-05
 
