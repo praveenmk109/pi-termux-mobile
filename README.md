@@ -22,21 +22,44 @@ and per-conversation execution environments — including remote hosts.
 
 ## Space RPC through pi-serverd
 
-### phi-spaces namespace upgrade
+### The space has its own store
 
-The runtime bundle, imports, Android signer domains, socket environment variable and build inputs now
+phi-spaces no longer runs on pi-durable. Its library depends on neither pi-durable, chord nor pi-ai.
+It keeps spaces in its **own SQLite store**: `node:sqlite` in WAL mode, with a writer thread started as an
+eval worker so the single-file bundle needs no second file. pi-durable remains in this app only for the agent
+conversations (`harness.sqlite`).
+
+- `pi-serverd.mjs` opens the space in `~/.pi-serverd/space.sqlite` (`openSqliteHost`), separate from
+  `harness.sqlite`. The space survives a daemon or harness restart, and the reverse holds as well.
+- The agents' space tools act on that store through `createSpaces(localSpaces(space))`. `common.mjs`
+  re-exports `createSpaces`, `localSpaces`, `openSqliteHost`, `startSpaceService` and `withEventSink`.
+- Every tool call carries a request identity: the conversation generation plus the task ID. A call repeated
+  after a crash gets its first result. Blocking calls keep their original deadline. The old atomicity with the
+  harness commit is gone (an intended API break in phi-spaces).
+- Events for conversations wait in the space's outbox while no agent host is connected. They are dropped only
+  when their conversation no longer exists or their reservation has expired (`withEventSink`).
+- **Old data is not carried over.** A space kept in `harness.sqlite` by an earlier version is not migrated.
+  A pi-durable store is refused by the new code (phi-spaces decision D6). The earlier namespace migration
+  tool has been removed.
+- Device acceptance: on 2026-10-24 the shipped bundle ran on a Xiaomi M2007J17G with Node 26.4.0 from the app
+  rootfs. `node:sqlite`, WAL, the eval worker and the own store all worked there. Mobile Spaces control was
+  accepted again against this store (see [Spaces pages](#spaces-pages)).
+
+### phi-spaces namespace
+
+The runtime bundle, imports, Android signer domains, socket environment variable and build inputs
 use `phi-spaces` / `PHI_SPACES_*`. The source checkout defaults to the sibling `phi-spaces` directory.
-Existing durable stores need a verified offline migration; use the copy-only SQLite migration tool in
-that checkout rather than replacing bytes in a database. Original stores must remain available for rollback.
 
 Existing Android profiles/Keystore aliases are not silently rewritten or deleted. Their previous aliases
 and bindings are not accepted as newly issued `phi-spaces` identities; arrange controlled re-enrollment
 with the updated host before relying on the upgraded app. An APK build is not device acceptance.
 
 `runtime/test-remote-client.mjs` is a **live** test that creates a session and submits a potentially paid model
-prompt. It now refuses execution unless `PI_MOBILE_LIVE_TEST=1` is explicitly set after cost approval.
+prompt. It refuses execution unless `PI_MOBILE_LIVE_TEST=1` is explicitly set after cost approval.
 It is not part of the offline runtime test suite. Use `npm test` in `runtime/` and
 `node --test test/spaces-mobile.test.mjs` at the repository root for isolated checks.
+
+### Socket identity
 
 `pi-serverd.mjs` connects the space service to socket requests with
 `withSpaceService`; the existing `sessions` service remains available.
@@ -71,6 +94,61 @@ and grants. Client request fields cannot override either identity.
   → `node cli.js`, with on-screen extra keys (esc/tab/ctrl/arrows/pgup/pgdn)
   for menus and scrollback. `?ssh=user@host` runs `ssh -tt <host> pi`
   instead — full remote pi TUI.
+- **Spaces** (`spaces.html`) — pair this device with a phi-spaces federation
+  and browse a data space (see below).
+- **Spaces-Steuerung** (`steuerung.html`) — admin control of runs, workers,
+  spaces and deployment through the paired control connection (see below).
+
+## Spaces pages
+
+**Spaces** prepares a P-256 device key in Android Keystore and pairs with an
+entered token/QR JSON. It checks pairing and authentication and resolves own-key
+rotation. It then connects to explicitly trusted control/data hosts over the
+overlay and shows the selected space's objects and statistics (read-only).
+Private keys are never exported. Request identities and public metadata are saved
+privately before sending; enrollment tokens are not persisted. There is no camera
+QR scanning yet. Native Keystore acceptance and a real phone–big pairing with
+object access and rotation are part of the phi-spaces phase 1b acceptance.
+
+**Spaces-Steuerung** sends only approved admin commands (`admin`) through
+`spaces-mobile.mjs`:
+
+- **Operations and runs:** state, open ACKs, recovery views, pause/resume/stop,
+  and recovery decisions bound to the view hash. You can start a new sieve run,
+  view its result (`exportRun`) and schedule a pause or resume (`scheduleRun`).
+  Stop runs only after a preview (`dryRun`) that names the revision.
+- **Workers:** desired state against reported state, with its age; set the count.
+- **Spaces** (create, archive, reactivate, delete) and **Deployment** (plan,
+  export).
+- **Alerts** (`listAlerts`) and **Audit** (`auditLog`).
+
+Each command ID is stored in the private profile before it is sent. The same ID
+is reused after a timeout, double tap or restart, and the page then shows "outcome
+is being checked" instead of starting the command again. Results are polled only
+while the page is visible. Page requests are serialized on the client.
+
+Device acceptance on the Xiaomi M2007J17G, against a coordinator in production
+composition over Wi-Fi:
+
+- 2026-10-16, still on pi-durable, also over NetBird.
+- 2026-10-24, again on the own store: pair as admin, start/pause/resume/stop a
+  sieve run, set workers, then `SIGKILL` the coordinator and resend the same
+  command ID. That command completed exactly once, and an independent check
+  confirmed every result.
+
+Still open: NetBird and screen-off behaviour with the own store, a coordinator
+on big, event tracking instead of polling, and on-device checks of the WebView
+`confirm`/`prompt` dialogs.
+
+`PI_SERVERD_FEDERATION_CONFIG` opts pi-serverd into the provisioned federation
+runtime, independent boot/authority checks and its supervisor. Configuration,
+keys and register endpoints must be provisioned explicitly. A persistent
+`restart.lock` blocks normal server startup. Operational requirements and open
+recovery integration are documented in the sibling phi-spaces checkout:
+`docs/abnahme/ap1b-betrieb.md`, `docs/abnahme/ap1b-abnahme.md` and
+`docs/betrieb-und-mobile-steuerung.md`.
+
+Mobile lifecycle checks: `node --test test/spaces-mobile.test.mjs`.
 
 ## App screens
 
@@ -250,10 +328,17 @@ Volta, asdf and nodenv set `PATH` in `~/.bashrc` — through a prelude that sour
 - `runtime/` — `server.mjs` (durable bridge + `/pty` WS + remote attach),
   `common.mjs` (shared harness setup, credential store with file lock, durable
   session registry, sequenced event hub, single-owner lock),
-  `pi-serverd.mjs` (remote session daemon), `remote-client.mjs` (pi-client
-  + ssh tunnel), `remote-env.mjs`/`env-server.mjs` (tool exec),
-  `public/` (chat, keys, clients, remote, terminal pages + shared menu),
-  package.json for prod node_modules
+  `pi-serverd.mjs` (remote session daemon; space in `space.sqlite`),
+  `remote-client.mjs` (pi-client + ssh tunnel), `remote-provision.mjs` /
+  `remote-state.mjs` (host provisioning and its state),
+  `remote-env.mjs`/`env-server.mjs` (tool exec),
+  `spaces-mobile.mjs` (pairing, Spaces and admin-command bridge behind
+  `/api/spaces/*`), `space-keystore.mjs` (Android Keystore signer),
+  `phi-spaces.mjs` (generated phi-spaces bundle, checked in),
+  `space-examples/` (generated example CLI programs, optional),
+  `public/` (chat, keys, sessions, clients, remote, terminal, spaces and
+  steuerung pages + shared menu), package.json for prod node_modules
+- `test/` — `spaces-mobile.test.mjs` (mobile Spaces lifecycle and control bridge)
 - `debs/` — Termux apt packages (aarch64) + extracted `rootfs/` used to build
   `rootfs.bin` (see below)
 - `tools/` — local toolchain (JDK 21, Android SDK, Gradle 8.10.2) — not committed
@@ -298,6 +383,11 @@ Every Android build runs `scripts/prepare-runtime.py` before `preBuild`. It rebu
 sibling checkout, synchronizes `runtime/phi-spaces.mjs` and compiled `runtime/space-examples/*.mjs`, then
 packages `runtime.bin` and generates `payload.sha256` for the runtime/rootfs pair. Changed payloads are
 re-extracted on the device without a manual version bump. Unchanged files keep their timestamps.
+
+The bundle is built from the phi-spaces agent package entry `agent/src/with-agent.ts`, which holds the
+library plus the agents' space tools. `@earendil-works/*` stays external and comes from this runtime's
+`node_modules`. The own store's writer thread is embedded as an eval worker, so `phi-spaces.mjs` stays one
+file. The examples come from both `examples/` and `agent/examples/` of phi-spaces.
 
 Build prerequisites: Python 3, installed mobile runtime dependencies and the prepared rootfs asset.
 Refreshing from source additionally needs Node/npm and the phi-spaces development dependencies.
@@ -575,22 +665,3 @@ service.
 ---
 
 *vibe coding fun with pi* — [Earendil Pi on GitHub](https://github.com/earendil-works/pi)
-
-The Spaces page prepares a P-256 device key in Android Keystore, pairs via an
-entered token/QR JSON, checks pairing/authentication and resolves own-key
-rotation. It connects to explicitly trusted control/data hosts over the overlay
-and displays the selected space's objects and statistics. Private keys are never
-exported; request identities and public metadata are saved privately before
-sending, without persisting enrollment tokens. Camera QR scanning and the live
-Keystore/phone-to-server acceptance remain pending.
-
-`PI_SERVERD_FEDERATION_CONFIG` opts pi-serverd into the provisioned federation
-runtime, independent boot/authority checks and its supervisor. Configuration,
-keys and register endpoints must be provisioned explicitly. A persistent
-`restart.lock` blocks normal server startup. Operational requirements and open
-recovery integration are documented in the sibling phi-spaces
-`docs/ap1b-betrieb.md` and `docs/ap1b-abnahme.md`.
-
-Mobile lifecycle checks: `node --test test/spaces-mobile.test.mjs`.
-
-The **Spaces-Steuerung** page (`runtime/public/steuerung.html`) sends admin commands (runs, workers) through the paired control connection. Each command ID is stored in the private profile before it is sent and is reused after a timeout, double tap or restart; results are polled only while the page is visible.
