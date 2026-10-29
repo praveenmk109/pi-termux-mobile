@@ -51,10 +51,16 @@
     </div>
   </dialog>
   <section id="update-box">
-    <div class="section-hdr">pi version</div>
+    <div class="section-hdr">pi version & updates</div>
     <div class="card card-outline" id="update-card" style="display:flex;flex-direction:column;gap:10px">
       <div style="display:flex;align-items:center;gap:10px">
-        <span id="update-installed" style="font-family:monospace;font-size:13px">…</span>
+        <span id="update-installed" style="font-family:monospace;font-size:13px">v0.0.6</span>
+        <span style="color:var(--success);font-size:12px;margin-left:auto;">✓ Managed via APK</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.4;">
+        In-app updates via npm are disabled on Android. Update by installing new APK builds from GitHub.
+      </div>
+      <div style="display:none">
         <span id="update-arrow" class="hidden" style="color:var(--muted)">→</span>
         <span id="update-latest"  class="hidden" style="font-family:monospace;font-size:13px;color:var(--success)"></span>
         <span id="update-ok"      class="hidden" style="color:var(--success);font-size:12px">✓ up to date</span>

@@ -315,3 +315,77 @@ dialog select, dialog input {
   font-size: 13px; line-height: 1.5;
 }
 .danger-btn { background: var(--danger); color: #fff; }
+
+/* ── Model picker styles ─────────────────────────────────────────────────── */
+.model-badge {
+  background: var(--surf2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--rad-sm);
+  padding: 5px 10px;
+  font-size: 12px;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+}
+.pill {
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.pill.active {
+  background: rgba(52, 211, 112, 0.2) !important;
+  color: var(--success) !important;
+  border-color: var(--success) !important;
+}
+.model-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surf3);
+  border-radius: var(--rad-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.model-item:active {
+  filter: brightness(0.85);
+}
+.model-item.selected {
+  border-color: var(--primary);
+  background: var(--surf);
+}
+.model-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-all;
+}
+.model-id {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: monospace;
+  margin-top: 2px;
+}
+.badge-free {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(52, 211, 112, 0.15);
+  border: 1px solid rgba(52, 211, 112, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.badge-provider {
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surf2);
+  border-radius: 4px;
+  padding: 2px 5px;
+  flex-shrink: 0;
+}

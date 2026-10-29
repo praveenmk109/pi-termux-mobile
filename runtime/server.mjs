@@ -334,6 +334,53 @@ async function activeState() {
   } finally { view?.dispose?.(); }
 }
 
+const KNOWN_FREE_OPENROUTER_MODELS = [
+  { id: 'google/gemini-2.0-flash-exp:free', name: 'Google: Gemini 2.0 Flash (Experimental)' },
+  { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek: R1 (Reasoning)' },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Meta: Llama 3.3 70B Instruct' },
+  { id: 'qwen/qwen-2.5-coder-32b-instruct:free', name: 'Qwen: Qwen 2.5 Coder 32B Instruct' },
+  { id: 'google/gemini-exp-1206:free', name: 'Google: Gemini Experimental 1206' },
+  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral: Mistral 7B Instruct' },
+  { id: 'microsoft/phi-3-medium-128k-instruct:free', name: 'Microsoft: Phi-3 Medium 128k Instruct' },
+  { id: 'meta-llama/llama-3.2-3b-instruct:free', name: 'Meta: Llama 3.2 3B Instruct' },
+  { id: 'meta-llama/llama-3.2-1b-instruct:free', name: 'Meta: Llama 3.2 1B Instruct' },
+];
+
+let cachedOpenRouterModels = null;
+let lastOpenRouterFetch = 0;
+
+async function getOpenRouterModels() {
+  const now = Date.now();
+  if (cachedOpenRouterModels && (now - lastOpenRouterFetch < 3600_000)) {
+    return cachedOpenRouterModels;
+  }
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.data)) {
+        cachedOpenRouterModels = data.data.map((m) => {
+          const isFree = m.id.endsWith(':free') || (m.pricing?.prompt === '0' && m.pricing?.completion === '0');
+          return {
+            provider: 'openrouter',
+            modelId: m.id,
+            name: m.name || m.id,
+            free: isFree,
+          };
+        });
+        lastOpenRouterFetch = now;
+        return cachedOpenRouterModels;
+      }
+    }
+  } catch {}
+  return KNOWN_FREE_OPENROUTER_MODELS.map((m) => ({
+    provider: 'openrouter',
+    modelId: m.id,
+    name: m.name,
+    free: true,
+  }));
+}
+
 async function handleApi(req, res, url, p) {
   const body = req.method === 'POST' ? await readBody(req) : {};
   if (p.startsWith('/api/spaces/') && ['GET', 'POST'].includes(req.method)) {
@@ -346,16 +393,14 @@ async function handleApi(req, res, url, p) {
   }
 
   if (p === '/api/pi-version' && req.method === 'GET') {
-    const installed = piInstalledVersion();
-    const latest = await piLatestVersion();
-    const semverGt = (a, b) => { if (!a || !b) return false; const p = (v) => v.split('.').map(Number); const [A,B] = [p(a),p(b)]; for (let i=0;i<3;i++) { if ((B[i]||0) > (A[i]||0)) return true; if ((B[i]||0) < (A[i]||0)) return false; } return false; };
-    return json(res, 200, { installed, latest, updateAvailable: semverGt(installed, latest) });
+    const installed = piInstalledVersion() ?? '0.0.5';
+    return json(res, 200, { installed, latest: installed, updateAvailable: false });
   }
   if (p === '/api/pi-update' && req.method === 'POST') {
-    return json(res, 200, { started: startPiUpdate() });
+    return json(res, 200, { started: false, error: 'In-app update disabled. Please install updates via APK releases.' });
   }
   if (p === '/api/pi-update-status' && req.method === 'GET') {
-    return json(res, 200, piUpdate);
+    return json(res, 200, { running: false, done: true, ok: true, version: piInstalledVersion() });
   }
   if (p === '/api/state') return json(res, 200, await activeState());
 
@@ -443,7 +488,23 @@ async function handleApi(req, res, url, p) {
   }
   if (p === '/api/models' && req.method === 'GET') {
     const avail = await models.getAvailable();
-    return json(res, 200, { models: avail.map((m) => ({ provider: m.provider, modelId: m.id })) });
+    const result = avail.map((m) => ({
+      provider: m.provider,
+      modelId: m.id,
+      name: m.id,
+      free: m.id.endsWith(':free') || m.id.includes('free'),
+    }));
+    const hasOpenRouter = (await credentialStore.get('openrouter')) != null;
+    if (hasOpenRouter) {
+      const orModels = await getOpenRouterModels();
+      const existing = new Set(result.map((m) => `${m.provider}|${m.modelId}`));
+      for (const m of orModels) {
+        if (!existing.has(`${m.provider}|${m.modelId}`)) {
+          result.push(m);
+        }
+      }
+    }
+    return json(res, 200, { models: result });
   }
   if (p === '/api/model' && req.method === 'POST') {
     if (!body.provider || !body.modelId) return json(res, 400, { error: 'provider+modelId required' });

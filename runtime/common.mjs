@@ -214,6 +214,178 @@ export const Subagent = defineExtension({
   ],
 });
 
+// --- free web search & fetch extension ------------------------------------------
+
+async function performFreeWebSearch(query) {
+  const cleanQ = String(query).trim();
+  if (!cleanQ) throw new Error('Search query is empty');
+
+  // 1. DuckDuckGo HTML search
+  try {
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQ)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const results = [];
+      const regex = /<h2 class="result__title">[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+      let match;
+      while ((match = regex.exec(html)) !== null && results.length < 8) {
+        let rawUrl = match[1];
+        let title = match[2].replace(/<[^>]+>/g, '').trim();
+        let snippet = match[3].replace(/<[^>]+>/g, '').trim();
+        let finalUrl = rawUrl;
+        try {
+          const u = new URL(rawUrl.startsWith('//') ? 'https:' + rawUrl : rawUrl);
+          const uddg = u.searchParams.get('uddg');
+          if (uddg) finalUrl = decodeURIComponent(uddg);
+        } catch {}
+        if (title && finalUrl) {
+          results.push(`### [${title}](${finalUrl})\n${snippet}`);
+        }
+      }
+      if (results.length > 0) {
+        return `Web search results for: "${cleanQ}"\n\n` + results.join('\n\n');
+      }
+    }
+  } catch {}
+
+  // 2. DuckDuckGo Instant Answer API fallback
+  try {
+    const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(cleanQ)}&format=json&no_html=1&skip_disambig=1`, {
+      headers: { 'User-Agent': 'pi-mobile/1.0' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const parts = [];
+      if (data.AbstractText) {
+        parts.push(`### [${data.Heading || cleanQ}](${data.AbstractURL || 'https://duckduckgo.com'})\n${data.AbstractText}`);
+      }
+      for (const topic of (data.RelatedTopics || []).slice(0, 5)) {
+        if (topic.Text && topic.FirstURL) {
+          parts.push(`- [${topic.Text}](${topic.FirstURL})`);
+        }
+      }
+      if (parts.length > 0) {
+        return `Web results for: "${cleanQ}"\n\n` + parts.join('\n\n');
+      }
+    }
+  } catch {}
+
+  // 3. Wikipedia OpenSearch API fallback
+  try {
+    const res = await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQ)}&limit=5&namespace=0&format=json`, {
+      headers: { 'User-Agent': 'pi-mobile/1.0' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const [, titles, descriptions, urls] = await res.json();
+      const results = [];
+      for (let i = 0; i < titles.length; i++) {
+        if (titles[i] && urls[i]) {
+          results.push(`### [${titles[i]}](${urls[i]})\n${descriptions[i] || ''}`);
+        }
+      }
+      if (results.length > 0) {
+        return `Wikipedia results for: "${cleanQ}"\n\n` + results.join('\n\n');
+      }
+    }
+  } catch {}
+
+  return `No search results found for: "${cleanQ}".`;
+}
+
+async function performFreeWebFetch(urlStr) {
+  const parsed = new URL(urlStr);
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Only http/https URLs allowed');
+
+  const res = await fetch(parsed.href, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/json,text/plain;q=0.9,*/*;q=0.8',
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  const contentType = res.headers.get('content-type') || '';
+  const text = await res.text();
+
+  if (contentType.includes('application/json')) {
+    return text.slice(0, 20000);
+  }
+
+  let clean = text
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+    .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<(?:header|footer|nav)\b[^<]*(?:(?!<\/(?:header|footer|nav)>)<[^<]*)*<\/(?:header|footer|nav)>/gi, '')
+    .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n### $1\n')
+    .replace(/<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, '[$2]($1)')
+    .replace(/<(?:p|div|tr|li|blockquote)[^>]*>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (clean.length > 20000) {
+    clean = clean.slice(0, 20000) + '\n\n...[content truncated]';
+  }
+  return clean || 'No readable text found on page.';
+}
+
+export const WebTools = defineExtension({
+  name: 'web_tools',
+  tools: [
+    defineTool({
+      name: 'web_search',
+      description: 'Search the web for up-to-date information, documentation, news, or answers. 100% free, no API key required.',
+      parameters: Type.Object({
+        query: Type.String({ description: 'Search keywords or question' }),
+      }),
+      replay: 'safe',
+      execute: async ({ query }, api, context) => {
+        try {
+          const results = await performFreeWebSearch(query);
+          return { content: [{ type: 'text', text: results }] };
+        } catch (err) {
+          return { content: [{ type: 'text', text: `Search error: ${err.message}` }] };
+        }
+      },
+    }),
+    defineTool({
+      name: 'web_fetch',
+      description: 'Fetch and read the text content of a web page or article from a URL. 100% free.',
+      parameters: Type.Object({
+        url: Type.String({ description: 'The web page URL to fetch' }),
+      }),
+      replay: 'safe',
+      execute: async ({ url }, api, context) => {
+        try {
+          const text = await performFreeWebFetch(url);
+          return { content: [{ type: 'text', text }] };
+        } catch (err) {
+          return { content: [{ type: 'text', text: `Fetch error: ${err.message}` }] };
+        }
+      },
+    }),
+  ],
+});
+
 export const HARNESS_SETTINGS = {
   stream: { timeoutMs: 180_000 },
   retry: { maxRetries: 3 },
@@ -239,6 +411,7 @@ export { createSpaces, localSpaces, openSqliteHost, startService as startSpaceSe
 export async function openHarness({ dbPath, models, env, extensions = [] }, ctx) {
   const registry = createRegistry();
   registry.install(CodingTools);
+  registry.install(WebTools);
   for (const ext of extensions) registry.install(ext);
   const storage = await openNodeSqliteStorage(dbPath);
   const harness = await Harness.open(storage, { models, registry, env, settings: HARNESS_SETTINGS }, ctx);

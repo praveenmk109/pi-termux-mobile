@@ -73,7 +73,114 @@ input.addEventListener('keydown', (e) => {
 
 // --- model picker ------------------------------------------------------------
 
+const modelBtn = document.getElementById('model-btn');
+const modelModal = document.getElementById('model-modal');
+const modelModalClose = document.getElementById('model-modal-close');
+const modelSearch = document.getElementById('model-search');
+const modelFilterFree = document.getElementById('model-filter-free');
+const modelList = document.getElementById('model-list');
+
+let allModels = [];
+let filterFreeOnly = false;
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function updateModelButton() {
+  if (!currentModel || !currentModel.modelId) {
+    if (modelBtn) modelBtn.textContent = 'no model';
+    return;
+  }
+  const id = currentModel.modelId.split('/').pop();
+  if (modelBtn) {
+    modelBtn.textContent = `${currentModel.provider}/${id}`;
+    modelBtn.title = `${currentModel.provider}/${currentModel.modelId}`;
+  }
+}
+
+function renderModelList() {
+  if (!modelList) return;
+  const q = (modelSearch?.value || '').trim().toLowerCase();
+  const currentKey = currentModel ? `${currentModel.provider}|${currentModel.modelId}` : '';
+
+  const filtered = allModels.filter((m) => {
+    if (filterFreeOnly && !m.free) return false;
+    if (!q) return true;
+    return m.modelId.toLowerCase().includes(q) ||
+           (m.name && m.name.toLowerCase().includes(q)) ||
+           m.provider.toLowerCase().includes(q);
+  });
+
+  modelList.innerHTML = '';
+  if (filtered.length === 0) {
+    modelList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">No matching models found.</div>';
+    return;
+  }
+
+  for (const m of filtered) {
+    const key = `${m.provider}|${m.modelId}`;
+    const isSelected = key === currentKey;
+    const item = document.createElement('div');
+    item.className = `model-item ${isSelected ? 'selected' : ''}`;
+
+    item.innerHTML = `
+      <div style="flex:1;min-width:0;">
+        <div class="model-name">${esc(m.name || m.modelId)}</div>
+        <div class="model-id">${esc(m.provider)}/${esc(m.modelId)}</div>
+      </div>
+      ${m.free ? '<span class="badge-free">FREE</span>' : '<span class="badge-provider">' + esc(m.provider) + '</span>'}
+      ${isSelected ? '<span style="color:var(--primary);font-size:15px;margin-left:4px;">✓</span>' : ''}
+    `;
+
+    item.addEventListener('click', async () => {
+      closeModelModal();
+      const r = await postJson(API.model, token, { provider: m.provider, modelId: m.modelId });
+      if (r.ok) {
+        currentModel = { provider: m.provider, modelId: m.modelId };
+        updateModelButton();
+        syncModelSelect();
+    renderModelList();
+      } else {
+        transcript.sys(`error setting model: ${r.error}`);
+      }
+    });
+
+    modelList.appendChild(item);
+  }
+}
+
+function openModelModal() {
+  if (modelModal) {
+    modelModal.classList.remove('hidden');
+    renderModelList();
+    if (modelSearch) {
+      modelSearch.value = '';
+      setTimeout(() => modelSearch.focus(), 80);
+    }
+  }
+}
+
+function closeModelModal() {
+  if (modelModal) modelModal.classList.add('hidden');
+}
+
+if (modelBtn) modelBtn.addEventListener('click', openModelModal);
+if (modelModalClose) modelModalClose.addEventListener('click', closeModelModal);
+if (modelModal) {
+  modelModal.addEventListener('click', (e) => {
+    if (e.target === modelModal) closeModelModal();
+  });
+}
+
+if (modelSearch) modelSearch.addEventListener('input', renderModelList);
+if (modelFilterFree) {
+  modelFilterFree.addEventListener('click', () => {
+    filterFreeOnly = !filterFreeOnly;
+    modelFilterFree.classList.toggle('active', filterFreeOnly);
+    renderModelList();
+  });
+}
+
 function syncModelSelect() {
+  updateModelButton();
   if (!currentModel) { modelSelect.value = ''; return; }
   const v = `${currentModel.provider}|${currentModel.modelId}`;
   if (![...modelSelect.options].some((o) => o.value === v)) {
@@ -90,13 +197,15 @@ async function refreshModels() {
     const r = await fetch(`${API.models}?token=${encodeURIComponent(token)}`);
     const j = await r.json();
     modelSelect.innerHTML = '<option value="">no model</option>';
-    for (const m of j.models ?? []) {
+    allModels = j.models ?? [];
+    for (const m of allModels) {
       const o = document.createElement('option');
       o.value = `${m.provider}|${m.modelId}`;
       o.textContent = `${m.provider}/${m.modelId}`;
       modelSelect.appendChild(o);
     }
     syncModelSelect();
+    renderModelList();
   } catch {}
 }
 
@@ -105,6 +214,7 @@ modelSelect.addEventListener('change', async () => {
   if (!modelId) return;
   const r = await postJson(API.model, token, { provider, modelId });
   if (!r.ok) transcript.sys(`error: ${r.error}`);
+  else { currentModel = { provider, modelId }; updateModelButton(); }
 });
 
 // ── Header action buttons ────────────────────────────────────────────────
