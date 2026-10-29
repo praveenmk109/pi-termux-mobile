@@ -10,8 +10,8 @@
   <header>
     <div id="menubar">
       <span id="status">connecting…</span>
-      <button id="model-btn" class="model-badge" title="Select model">no model</button>
-      <select id="model-select" class="hidden" title="Model"><option value="">no model</option></select>
+      <input type="search" id="model-search" placeholder="🔍 Filter…" style="width:90px;padding:4px 6px;font-size:12px;background:var(--surf2);border:1px solid var(--border);border-radius:var(--rad-sm);color:var(--text);flex-shrink:0;" autocomplete="off">
+      <select id="model-select" title="Model"><option value="">no model</option></select>
       <div class="hdr-actions">
         <button id="btn-new"     class="btn-icon" title="New session">＋</button>
         <button id="btn-compact" class="btn-icon" title="Compact context">⇊</button>
@@ -31,20 +31,6 @@
     <textarea id="input" rows="2" placeholder="Message…" autocomplete="off"></textarea>
     <button type="submit">↑</button>
   </form>
-  <!-- Model selection modal -->
-  <div id="model-modal" class="modal-overlay hidden">
-    <div class="modal-box" style="max-height:85vh;display:flex;flex-direction:column;gap:12px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="font-size:16px;font-weight:700;">Select Model</h3>
-        <button id="model-modal-close" class="btn-icon" style="background:transparent;color:var(--muted);font-size:18px;">✕</button>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input type="search" id="model-search" placeholder="Search (e.g. gemini, llama)..." style="flex:1;padding:8px 12px;background:var(--surf3);border:1px solid var(--border);border-radius:var(--rad-sm);color:var(--text);font-size:13px;" autocomplete="off">
-        <button id="model-filter-free" class="pill active" style="padding:8px 12px;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid var(--border);background:var(--surf3);">✨ Free only</button>
-      </div>
-      <div id="model-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px;max-height:55vh;"></div>
-    </div>
-  </div>
   <script type="module" src="app.js"></script>
 </body>
 </html>

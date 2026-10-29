@@ -487,23 +487,30 @@ async function handleApi(req, res, url, p) {
     return json(res, 200, { status: settled.status });
   }
   if (p === '/api/models' && req.method === 'GET') {
-    const avail = await models.getAvailable();
-    const result = avail.map((m) => ({
-      provider: m.provider,
-      modelId: m.id,
-      name: m.id,
-      free: m.id.endsWith(':free') || m.id.includes('free'),
-    }));
-    const hasOpenRouter = (await credentialStore.get('openrouter')) != null;
-    if (hasOpenRouter) {
-      const orModels = await getOpenRouterModels();
-      const existing = new Set(result.map((m) => `${m.provider}|${m.modelId}`));
-      for (const m of orModels) {
-        if (!existing.has(`${m.provider}|${m.modelId}`)) {
-          result.push(m);
+    let result = [];
+    try {
+      const avail = await models.getAvailable();
+      result = (avail || []).map((m) => ({
+        provider: m.provider,
+        modelId: m.id,
+        name: m.id,
+        free: m.id.endsWith(':free') || m.id.includes('free'),
+      }));
+    } catch {}
+
+    try {
+      const creds = credentialStore.readAll?.() ?? {};
+      if (creds.openrouter) {
+        const orModels = await getOpenRouterModels();
+        const existing = new Set(result.map((m) => `${m.provider}|${m.modelId}`));
+        for (const m of orModels) {
+          if (!existing.has(`${m.provider}|${m.modelId}`)) {
+            result.push(m);
+          }
         }
       }
-    }
+    } catch {}
+
     return json(res, 200, { models: result });
   }
   if (p === '/api/model' && req.method === 'POST') {
